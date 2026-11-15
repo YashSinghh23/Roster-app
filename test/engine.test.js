@@ -1,0 +1,20 @@
+const assert = require('assert');
+const R = require('../js/engine.js'), D = require('../js/data.js');
+const S = D.buildSample(); const r = R.generate(S); S.roster = r.roster; S.covers = r.covers;
+let A = R.analyze(S);
+console.log('stats', JSON.stringify(A.stats), 'covers', S.covers.length);
+A.issues.filter(i => i.sev !== 'pref').slice(0, 15).forEach(i => console.log(i.sev, i.title, '|', i.detail));
+assert(S.employees.length >= 30, '30+ employees');
+assert.strictEqual(A.stats.singleBrands / A.stats.brands, 0.8, '80% single-resource brands');
+D.scenarios.forEach(sc => {
+  const T = JSON.parse(JSON.stringify(S)); const id = T.employees.find(e => e.name === sc.emp).id;
+  const ds = R.monthDates(T.month).filter(d => d >= sc.from && d <= sc.to);
+  const before = R.analyze(T).stats.errors; const res = R.addLeave(T, id, ds, sc.type);
+  const a = R.analyze(T); const gaps = a.issues.filter(i => i.type === 'NO_COVERAGE' || i.type === 'UNDERSTAFFED');
+  const sg = gaps.length ? R.suggest(T, gaps[0]) : [];
+  console.log(sc.id, 'applied', res.applied.length, 'skipped', res.skipped.length, 'errors', before, '->', a.stats.errors, 'suggestions', sg.map(s => s.type).join(','));
+  assert(a.stats.errors > before, sc.id + ' should create a visible gap');
+  const fix = sg.find(s => s.type === 'cover' || s.type === 'shift_off'); assert(fix, sc.id + ' should have a fix');
+  R.applySuggestion(T, fix); const b = R.analyze(T).stats.errors; console.log('  after applying fix errors', b); assert(b < a.stats.errors);
+});
+console.log('OK');

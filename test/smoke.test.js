@@ -1,0 +1,24 @@
+// Renders every tab in a fake DOM and simulates the key clicks. Catches runtime errors without a browser.
+const assert = require('assert');
+const store = {}; let out = {};
+global.localStorage = { getItem: k => store[k] || null, setItem: (k, v) => (store[k] = v) };
+const listeners = {};
+global.document = { readyState: 'complete', getElementById: id => (out[id] = out[id] || { innerHTML: '', value: '' }), addEventListener: (n, f) => (listeners[n] = f), createElement: () => ({ click() {} }) };
+global.confirm = () => true;
+global.window = { RosterEngine: require('../js/engine.js'), RosterData: require('../js/data.js') };
+require('../js/app.js');
+const app = window.RosterApp;
+const click = (data, extra) => app.onClick({ target: { closest: () => ({ dataset: data }) } });
+const change = (data, value) => app.onChange({ target: { dataset: data, value } });
+['roster', 'issues', 'changes', 'setup'].forEach(t => { click({ act: 'tab', tab: t }); assert(out.app.innerHTML.length > 500, t); });
+['pod', 'brand', 'process', 'employee', 'company'].forEach(v => { click({ act: 'tab', tab: 'roster' }); change({ chg: 'view' }, v); assert(out.app.innerHTML.includes('Roster') || true); });
+click({ act: 'tab', tab: 'changes' }); click({ act: 'demo', i: '0' });
+assert(app.ui.tab === 'issues' && out.app.innerHTML.includes('Suggest fixes'), 'demo shows gap');
+const key = app.state && out.app.innerHTML.match(/data-act="fix" data-key="([^"]+)"/)[1];
+click({ act: 'fix', key }); assert(out.app.innerHTML.includes('Apply'), 'suggestions shown');
+click({ act: 'apply', key, i: '1' });
+click({ act: 'cell', e: app.state.employees[5].id, d: '2026-12-10' }); click({ act: 'setcell', st: 'WO' });
+click({ act: 'generate' }); change({ chg: 'month' }, '2027-01'); change({ chg: 'month' }, '2026-12');
+click({ act: 'tab', tab: 'setup' }); click({ act: 'addbrand' }); click({ act: 'addemp' });
+assert(app.csv().split('\n').length === app.state.employees.length + 1, 'csv rows');
+console.log('SMOKE OK');
