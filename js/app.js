@@ -10,7 +10,7 @@
 
   /* ---------- state ---------- */
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
-  function regen() { const r = R.generate(S); S.roster = r.roster; S.covers = r.covers; }
+  function regen(opts) { const r = R.generate(S, opts); S.roster = r.roster; S.covers = r.covers; S.solver = r.solver; }
   function commit(msg) { if (msg !== undefined) ui.msg = msg; ui.sugg = {}; save(); render(); }
   function ensure() {
     const ds = R.monthDates(S.month);
@@ -59,7 +59,7 @@
   function header() {
     return `<header><div><h1>Smart Roster Manager</h1><div class="sub">Sample data · ${A.stats.employees} employees · ${A.stats.brands} brands · saved in this browser</div></div>
     <div class="ctrl"><label>Month <input type="month" data-chg="month" value="${S.month}"></label>
-    <button class="pri" data-act="generate" title="Re-optimises weekly offs, keeps your manual edits">Regenerate roster</button>
+    <button class="pri" data-act="generate" title="Runs the optimiser. Keeps your manual edits">Optimise roster</button>
     <button data-act="csv">Export CSV</button><button class="ghost" data-act="reset">Reset sample data</button></div></header>`;
   }
   function stats() {
@@ -72,6 +72,14 @@
   function tabs() {
     const t = [['roster', 'Roster'], ['issues', `Issues (${A.stats.errors + A.stats.warnings})`], ['changes', 'Changes & leave'], ['setup', 'Setup data']];
     return '<nav>' + t.map(([k, l]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}">${l}</button>`).join('') + '</nav>';
+  }
+  function solverCard() {
+    const v = S.solver; if (!v) return '';
+    const row = (l, k) => `<tr><td>${l}</td><td>${v.greedy[k]}</td><td><b>${v.final[k]}</b></td></tr>`;
+    return `<details class="card"><summary><b>Solver:</b> ${esc(v.status)} <span class="sub">(${v.mode}, ${v.ms} ms, ${v.moves} improving moves)</span></summary>
+      <table class="plain"><thead><tr><th>Metric (lower is better)</th><th>Greedy start</th><th>After optimisation</th></tr></thead><tbody>
+      ${row('Uncovered process-days (mandatory)', 'uncovered')}${row('Temporary cover units', 'coverUnits')}${row('Weekly offs off preferred day', 'prefMisses')}${row('Working days beyond streak limit', 'streakExcess')}${row('Weighted objective', 'objective')}</tbody></table>
+      <div class="sub">Step 1 greedy placement → step 2 local search (moves and swaps) scored with an exact per-day cover assignment (maximum bipartite matching). Click "Greedy only" in Changes to compare.</div></details>`;
   }
   const legend = () => `<div class="legend"><span class="s-W">W working</span><span class="s-WO">OFF weekly off</span><span class="s-L">L leave</span><span class="s-CO">CO comp-off</span><span class="s-H">– closed / holiday</span>
     <span style="box-shadow:inset 0 0 0 2px var(--covt)">outlined = also covering another process</span> <span class="k-ok">covered</span><span class="k-covered">covered by temporary cover</span><span class="k-short">understaffed</span><span class="k-none">no coverage</span></div>`;
@@ -125,7 +133,7 @@
     const ents = entities(); if (ents.length && !ents.some(x => x[0] === ui.entity)) ui.entity = ents[0][0];
     const views = [['company', 'Company'], ['pod', 'Pod'], ['brand', 'Brand'], ['process', 'Process'], ['employee', 'Employee']];
     let h = `<div class="bar">View <select data-chg="view">${views.map(([k, l]) => opt(k, l, ui.view)).join('')}</select>
-      ${ents.length ? `<select data-chg="entity">${ents.map(([k, l]) => opt(k, l, ui.entity)).join('')}</select>` : ''}</div>${legend()}${editPanel()}`;
+      ${ents.length ? `<select data-chg="entity">${ents.map(([k, l]) => opt(k, l, ui.entity)).join('')}</select>` : ''}</div>${solverCard()}${legend()}${editPanel()}`;
     if (ui.view === 'employee') return h + employeeView();
     const sc = scope();
     return h + info() + '<h3>Who is working (click a cell to edit)</h3>' + grid(sc.emps) + '<h3>Coverage: staff available / required</h3>' + covGrid(sc.procs);
@@ -175,7 +183,7 @@
       <input type="date" id="lv-from" value="${S.month}-10"><input type="date" id="lv-to" value="${S.month}-10">
       <select id="lv-type">${opt('L', 'Leave', '')}${opt('CO', 'Comp-off', '')}</select>
       <button class="pri" data-act="addleave">Apply to roster</button>
-      <button data-act="generate">Re-balance automatically</button><button class="ghost" data-act="fresh">Clear manual edits &amp; regenerate</button></div>
+      <button data-act="generate">Re-balance automatically</button><button data-act="greedy">Greedy only (compare)</button><button class="ghost" data-act="fresh">Clear manual edits &amp; regenerate</button></div>
       <div class="sub">Leave never overwrites a weekly off or closed day. "Re-balance" re-optimises weekly offs and covers around all leave while keeping manual edits.</div></div>`;
     const lv = S.leaves.filter(l => l.date.startsWith(S.month)).sort((a, b) => a.date.localeCompare(b.date));
     h += `<div class="two"><div class="card"><b>Leaves &amp; comp-offs this month (${lv.length})</b><table class="plain"><tbody>${lv.map(l => `<tr><td>${esc(empName(l.empId))}</td><td>${R.fmt(l.date)}</td><td>${l.type === 'L' ? 'Leave' : 'Comp-off'}</td><td><button class="sm" data-act="rmleave" data-e="${l.empId}" data-d="${l.date}">Remove</button></td></tr>`).join('') || '<tr><td>None</td></tr>'}</tbody></table></div>
@@ -248,7 +256,8 @@
     if (a === 'closeedit') { ui.edit = null; return render(); }
     if (a === 'setcell') { R.setCell(S, ui.edit.e, ui.edit.d, d.st); const x = ui.edit; ui.edit = null; return commit(`${empName(x.e)} on ${R.fmt(x.d)} set to "${R.LABEL[d.st]}". Check the coverage rows and Issues tab.`); }
     if (a === 'rmcoverday') { S.covers = S.covers.filter(c => !(c.empId === ui.edit.e && c.date === ui.edit.d)); ui.edit = null; return commit('Cover duty removed.'); }
-    if (a === 'generate') { regen(); return commit('Roster regenerated. Manual edits were kept; weekly offs and covers were re-optimised around all leave.'); }
+    if (a === 'generate') { regen(); return commit('Roster optimised. Manual edits were kept; weekly offs and covers were re-optimised around all leave.'); }
+    if (a === 'greedy') { regen({ mode: 'greedy' }); return commit('Greedy-only roster generated (no optimisation). Click "Optimise roster" to compare.'); }
     if (a === 'fresh') { S.locks = {}; S.covers = []; regen(); return commit('Roster regenerated from scratch (manual edits cleared).'); }
     if (a === 'csv') return csv();
     if (a === 'reset') { if (typeof confirm === 'function' && !confirm('Reset all data to the sample dataset?')) return; S = D.buildSample(); regen(); ui.edit = null; return commit('Sample data restored.'); }

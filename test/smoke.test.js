@@ -18,7 +18,7 @@ const key = app.state && out.app.innerHTML.match(/data-act="fix" data-key="([^"]
 click({ act: 'fix', key }); assert(out.app.innerHTML.includes('Apply'), 'suggestions shown');
 click({ act: 'apply', key, i: '1' });
 click({ act: 'cell', e: app.state.employees[5].id, d: '2026-12-10' }); click({ act: 'setcell', st: 'WO' });
-click({ act: 'generate' }); change({ chg: 'month' }, '2027-01'); change({ chg: 'month' }, '2026-12');
+click({ act: 'generate' }); click({ act: 'greedy' }); assert(app.state.solver.mode === 'greedy'); click({ act: 'generate' }); assert(app.state.solver.mode === 'optimised'); change({ chg: 'month' }, '2027-01'); change({ chg: 'month' }, '2026-12');
 click({ act: 'tab', tab: 'setup' }); click({ act: 'addbrand' }); click({ act: 'addemp' });
 assert(app.csv().split('\n').length === app.state.employees.length + 1, 'csv rows');
 console.log('SMOKE OK');

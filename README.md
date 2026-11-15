@@ -20,7 +20,7 @@ Built for the Datastraw assessment. It prioritises **correct coverage and clear 
 
 ## Features
 - **Setup tab:** add, edit and remove pods, employees, brands, processes, calendars, minimum staff (plus per-weekday minimums such as `Sat=2`), assignments and rules, with no code changes.
-- **Generate** a roster for any month. **Validate** it continuously.
+- **Optimise** a roster for any month (greedy + local search + exact cover matching) and **validate** it continuously. A before/after solver card shows the improvement.
 - **Five views:** company, pod, brand, process, employee (calendar). Click any cell to edit; the impact shows immediately.
 - **Issues tab:** mandatory errors, warnings and preferences, each with who is unavailable and why, plus **Suggest fixes** (move a weekly off, or assign a backup).
 - **Changes tab:** one-click scenarios, add leave or comp-off, add holidays, re-balance automatically, manage covers. CSV export.
@@ -31,11 +31,15 @@ Built for the Datastraw assessment. It prioritises **correct coverage and clear 
 `Pod` (name, lead) → `Employee` (pod, role agent/floater/lead, preferred weekly off). `Brand` → `Process` (brand, calendar type, minimum staff, optional per-weekday minimums). `Assignment` is a many-to-many link between an employee and a process, so one person can handle several processes or brands and a process can have several people. `Leave`, `Holiday` and `Cover` are separate records. A brand's *operating calendar* lives on the process; an employee's *schedule* is a derived day-by-day status (Working, Weekly off, Leave, Comp-off, Closed). They are deliberately separate.
 
 ### 2. How is a roster generated and checked?
-`js/engine.js` (pure functions, unit-tested):
-1. Start from fixed facts: leave, comp-offs, closed days, manual edits.
-2. Give each employee one weekly off per Mon–Sun week. The most constrained employees go first. Each candidate day is scored: *coverage shortfall* (mandatory, heavily weighted) ≫ preferred weekday (soft) > spreading offs across the team > consistent weekday and short work streaks.
-3. Fill any remaining gaps with temporary covers.
-4. `analyze()` independently recomputes, for every process and day, available vs required staff and emits issues. The validator never trusts the generator, so manual edits are checked the same way.
+`js/engine.js` (pure functions, unit-tested) is an **optimising solver**:
+1. **Fixed facts:** leave, comp-offs, closed days and manual edits.
+2. **Greedy construction:** one weekly off per Mon–Sun week, most-constrained employees first (coverage ≫ preference).
+3. **Local search:** it tries moving every weekly off to another day and swapping offs between coupled employees (same brand), keeping a change only if the weighted objective strictly improves.
+4. **Exact cover assignment:** every candidate roster is scored by solving, for each day, a maximum bipartite matching between uncovered (brand, processes) demands and eligible backups. So the "uncovered gaps" count is always exact, not a heuristic.
+5. **Objective (weights in code):** uncovered process-days (×1,000,000, mandatory) ≫ cover units (×60) > off-day preference (×20) > streak limit (×40) > spreading offs, stable weekday pattern, fair cover load and fair weekend offs.
+6. **Validation:** `analyze()` independently recomputes available vs required staff for every process and day, and checks weekly offs, streaks and workload. It never trusts the generator, so manual edits are checked the same way.
+
+*Honest scope:* coverage is optimal whenever the solver reports 0 uncovered process-days (zero gaps cannot be beaten). For the softer goals the result is a strong local optimum, not a proven global one; the Roster tab shows a before/after table (greedy start vs optimised). A CP-SAT model would be the next step for provable global optimality.
 
 ### 3. Single-resource vs multi-employee brands
 Same model, different outcome. With several people, the scorer avoids giving two people of a process the same off day. With one person, every off day on a required day is an unavoidable gap, so the system resolves it with a cover (a same-brand colleague, else a pod floater, else a pod colleague) and marks the brand as single-resource.
@@ -50,10 +54,10 @@ Constraints are classed as **mandatory** (coverage, one weekly off per week, eno
 Automated: weekly-off placement, backup selection, validation, fix suggestions. Human: approving leave, applying a fix to a gap caused by a change, overriding any cell. Manual weekly-off edits are locked and survive regeneration. Why: coverage decisions have client and people impact, and a manager should be accountable for them.
 
 ### 7. If the team and brand count doubled
-Move state from localStorage to Postgres/Supabase with auth and per-pod permissions. Run generation server-side or in a worker; replace the greedy pass with a constraint solver (OR-Tools CP-SAT) for global optimality and fairness. Cache coverage per day, paginate the grids, and add pod-lead approval and change notifications.
+Move state from localStorage to Postgres/Supabase with auth and per-pod permissions. Run generation server-side or in a worker; replace the local search with a constraint solver (OR-Tools CP-SAT) for provable global optimality. Cache coverage per day, paginate the grids, and add pod-lead approval and change notifications.
 
 ### 8. One more week
-(1) A CP-SAT solver with a fairness objective (equal weekend/holiday load) and comparison of alternative plans. (2) Shift timings and handoffs. (3) Supabase persistence, login and a pod-lead → ops-manager approval workflow. (4) An AI explanation of conflicts, using the Claude API on the issue list.
+(1) A CP-SAT model for provable global optimality, plus side-by-side comparison of alternative plans. (2) Shift timings and handoffs. (3) Supabase persistence, login and a pod-lead → ops-manager approval workflow. (4) An AI explanation of conflicts, using the Claude API on the issue list.
 
 ## Assumptions (all configurable in Setup)
 - A week is Mon–Sun and needs one weekly off. A recurring closed day (e.g. Sunday for a "closed Sundays" process) counts as that rest. A public holiday does **not**; it is an extra day off for people whose processes are all closed.

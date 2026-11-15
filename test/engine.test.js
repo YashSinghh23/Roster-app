@@ -1,6 +1,8 @@
 const assert = require('assert');
 const R = require('../js/engine.js'), D = require('../js/data.js');
 const S = D.buildSample(); const r = R.generate(S); S.roster = r.roster; S.covers = r.covers;
+S.solver = r.solver; console.log('solver', JSON.stringify(r.solver));
+assert(r.solver.final.objective <= r.solver.greedy.objective, 'optimiser must not be worse than greedy');
 let A = R.analyze(S);
 console.log('stats', JSON.stringify(A.stats), 'covers', S.covers.length);
 A.issues.filter(i => i.sev !== 'pref').slice(0, 15).forEach(i => console.log(i.sev, i.title, '|', i.detail));

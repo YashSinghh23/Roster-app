@@ -2,7 +2,7 @@
 
 ## Demo video script (about 4 minutes)
 1. **0:00 Intro.** "Smart Roster Manager: 32 employees, 20 brands, 4 pods. 16 brands have a single owner, 4 have 2 to 3 people."
-2. **0:20 Roster tab, Company view.** Show who is working, weekly offs, leave. Point to the coverage grid: green = covered, teal = temporary cover. Header shows 0 mandatory errors, 100% coverage.
+2. **0:20 Roster tab, Company view.** Open the Solver card: greedy start vs optimised (coverage, streaks, objective). Then: Show who is working, weekly offs, leave. Point to the coverage grid: green = covered, teal = temporary cover. Header shows 0 mandatory errors, 100% coverage.
 3. **0:50 Different brand schedules.** Brand view → VoltGear (CS 365 days, single owner), then UrbanStride (3 people, CS needs 2 on Saturdays), then Glowbar (closed Sundays). Show the calendar rule per process.
 4. **1:40 Employee and pod views.** Employee view for Rohit Banerjee (calendar), Pod view for Delta.
 5. **2:00 Handle a change.** Changes tab → "Sole owner of a brand is unavailable". Errors go 0 → 2.
@@ -25,7 +25,7 @@ Please find my submission for the Smart Roster Management System assignment.
 - Demo video: [paste]
 - LinkedIn: [paste, make sure it is public]
 
-Approach: Employees, brands, processes and pods are modelled as data with many-to-many assignments, and each process has its own operating calendar and minimum staffing, separate from an employee's schedule. A deterministic generator places weekly offs by scoring coverage first, then preferences, and fills unavoidable gaps with temporary covers; an independent validator recomputes coverage and flags mandatory, policy and preference issues with suggested fixes. The manager stays in control of changes and overrides.
+Approach: Employees, brands, processes and pods are modelled as data with many-to-many assignments, and each process has its own operating calendar and minimum staffing, separate from an employee's schedule. A greedy construction is improved by a local search (moves and swaps) over a weighted objective with coverage as the dominant term, and every candidate is scored with an exact per-day cover assignment (bipartite matching); an independent validator recomputes coverage and flags mandatory, policy and preference issues with suggested fixes. The manager stays in control of changes and overrides.
 
 Thanks,
 [Your Full Name]
